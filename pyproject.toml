@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fast-clear"
+dynamic = ["version"]
+description = "Очистка следов USB-устройств в реестре и журналах Windows 10/11"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "fast_clear" }]
+keywords = ["windows", "usb", "eventlog", "registry", "cleanup"]
+classifiers = [
+  "Environment :: Win32 (MS Windows)",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Systems Administration",
+]
+
+[project.scripts]
+fast_clear = "fast_clear.main:main"
+fast_clear_gui = "fast_clear.gui:main"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+[tool.setuptools.packages.find]
+include = ["fast_clear*"]
