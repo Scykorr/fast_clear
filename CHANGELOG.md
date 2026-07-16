@@ -5,6 +5,14 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии следуют [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.2.1] — 2026-07-16
+
+### Исправлено
+
+- Критично: больше **не очищается весь** `Enum\USB` — сохраняются клавиатуры, мыши, HID и USB-хабы.
+- DeviceClasses / DeviceContainers больше не матчятся по голому «USB».
+- Добавлены `--repair-input` и кнопка GUI «Починить клавиатуру/мышь».
+
 ## [1.2.0] — 2026-07-16
 
 ### Добавлено
@@ -37,6 +45,7 @@
 - CLI: `--dry-run`, выборочный skip модулей, `--version`, `-q`.
 - `VERSION`, `__version__`, README, `run_as_admin.bat`.
 
+[1.2.1]: https://github.com/local/fast_clear/releases/tag/v1.2.1
 [1.2.0]: https://github.com/local/fast_clear/releases/tag/v1.2.0
 [1.1.0]: https://github.com/local/fast_clear/releases/tag/v1.1.0
 [1.0.0]: https://github.com/local/fast_clear/releases/tag/v1.0.0

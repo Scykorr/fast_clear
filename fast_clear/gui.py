@@ -130,6 +130,11 @@ class FastClearApp(tk.Tk):
         )
         self.btn_start.pack(side=tk.LEFT, padx=(0, 8))
 
+        self.btn_repair = ttk.Button(
+            btns, text="Починить клавиатуру/мышь", command=self._start_repair
+        )
+        self.btn_repair.pack(side=tk.LEFT, padx=(0, 8))
+
         ttk.Button(btns, text="Очистить лог", command=self._clear_log).pack(
             side=tk.LEFT
         )
@@ -162,8 +167,24 @@ class FastClearApp(tk.Tk):
 
         self._append_log(
             "Отключите USB-накопители перед очисткой. "
+            "Клавиатуры/мыши/HID не удаляются. "
             "Требуются права администратора."
         )
+
+    def _set_busy(self, busy: bool) -> None:
+        self._running = busy
+        if busy:
+            self.btn_start.state(["disabled"])
+            self.btn_elevate.state(["disabled"])
+            self.btn_repair.state(["disabled"])
+            self.progress.start(12)
+        else:
+            self.progress.stop()
+            self._refresh_admin_status()
+            if is_admin():
+                self.btn_repair.state(["!disabled"])
+            else:
+                self.btn_repair.state(["disabled"])
 
     def _refresh_admin_status(self) -> None:
         if is_admin():
@@ -171,12 +192,14 @@ class FastClearApp(tk.Tk):
             self.btn_elevate.state(["disabled"])
             if not self._running:
                 self.btn_start.state(["!disabled"])
+                self.btn_repair.state(["!disabled"])
         else:
             self.admin_var.set(
                 "Статус: нет прав администратора — нажмите кнопку ниже"
             )
             self.btn_elevate.state(["!disabled"])
             self.btn_start.state(["disabled"])
+            self.btn_repair.state(["disabled"])
 
     def _append_log(self, msg: str) -> None:
         self.log_text.configure(state=tk.NORMAL)
@@ -247,9 +270,7 @@ class FastClearApp(tk.Tk):
 
         self._running = True
         self._finish_ok = None
-        self.btn_start.state(["disabled"])
-        self.btn_elevate.state(["disabled"])
-        self.progress.start(12)
+        self._set_busy(True)
         self._append_log(f"Старт очистки (fast_clear {__version__})")
 
         def worker() -> None:
@@ -272,21 +293,51 @@ class FastClearApp(tk.Tk):
         self._worker.start()
         self.after(200, self._poll_worker)
 
-    def _poll_worker(self) -> None:
+    def _start_repair(self) -> None:
+        if self._running:
+            return
+        if not is_admin():
+            messagebox.showwarning(
+                "fast_clear",
+                "Сначала запустите программу от имени администратора.",
+            )
+            return
+        self._finish_ok = None
+        self._set_busy(True)
+        self._append_log("Восстановление USB-клавиатуры/мыши…")
+
+        def worker() -> None:
+            ok = True
+            try:
+                from fast_clear.repair import repair_usb_input
+
+                repair_usb_input(progress=lambda m: self._log_queue.put(m))
+            except Exception as exc:  # noqa: BLE001
+                self._log_queue.put(f"Исключение: {exc}")
+                ok = False
+            self._finish_ok = ok
+
+        self._worker = threading.Thread(target=worker, daemon=True)
+        self._worker.start()
+        self.after(200, lambda: self._poll_worker(done_title="Восстановление"))
+
+    def _poll_worker(self, done_title: str = "Очистка") -> None:
         if self._worker and self._worker.is_alive():
-            self.after(200, self._poll_worker)
+            self.after(200, lambda: self._poll_worker(done_title=done_title))
             return
 
-        self.progress.stop()
-        self._running = False
-        self._refresh_admin_status()
+        self._set_busy(False)
         ok = bool(self._finish_ok)
         if ok:
-            messagebox.showinfo("fast_clear", "Очистка завершена.")
+            messagebox.showinfo(
+                "fast_clear",
+                f"{done_title} завершено.\n"
+                "Если USB-ввод не ожил — переподключите кабель или перезагрузите ПК.",
+            )
         else:
             messagebox.showwarning(
                 "fast_clear",
-                "Очистка завершилась с ошибками. Смотрите журнал.",
+                f"{done_title} завершилось с ошибками. Смотрите журнал.",
             )
 
     def _on_close(self) -> None:

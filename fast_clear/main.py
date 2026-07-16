@@ -71,6 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Не выполнять финальную самоочистку следов",
     )
     p.add_argument(
+        "--repair-input",
+        action="store_true",
+        help="Восстановить USB-клавиатуру/мышь (перескан PnP, без очистки)",
+    )
+    p.add_argument(
         "-q",
         "--quiet",
         action="store_true",
@@ -81,24 +86,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 def print_plan() -> None:
     print(f"fast_clear {__version__} — план (dry-run)\n")
-    print("1. Реестр: USBSTOR/USB/WPD/Modem/UMB, телефоны и часы (MTP/Garmin),")
-    print("   Portable Devices, DeviceContainers, Class Modem/Ports, кэши Apple/Garmin")
-    print("2. Журналы: DriverFrameworks, Kernel-PnP, WPD/MTP, WWAN/Mobile Broadband,")
-    print("   System, Security, Eventlog, …")
-    print("3. Файлы: setupapi.dev.log / .app.log, Prefetch утилит, PS history")
-    print("4. Самоочистка: повторный clear audit-журналов + Prefetch wevtutil")
+    print("1. Реестр: USBSTOR/WPD/Modem/UMB + выборочно Enum\\USB")
+    print("   (клавиатуры, мыши, HID и USB-хабы НЕ удаляются)")
+    print("2. Журналы: PnP/WPD/MTP/WWAN + System/Security/Eventlog")
+    print("3. Файлы: setupapi, Prefetch утилит, PS history")
+    print("4. Самоочистка следов очистки")
     print("\nТребуются права администратора. Изменения не выполняются (--dry-run).")
 
 
 def should_use_gui(args: argparse.Namespace) -> bool:
-    if args.cli or args.dry_run:
+    if args.cli or args.dry_run or args.repair_input:
         return False
     if args.gui:
         return True
-    # Собранный exe без консоли — всегда GUI
     if getattr(sys, "frozen", False):
         return True
-    # Без явных флагов очистки — удобнее GUI
     return not any(
         (
             args.skip_registry,
@@ -119,6 +121,13 @@ def run_cli(args: argparse.Namespace) -> int:
     progress = (lambda _m: None) if args.quiet else _ts_print
 
     print(f"fast_clear {__version__}")
+
+    if args.repair_input:
+        from fast_clear.repair import repair_usb_input
+
+        repair_usb_input(progress=progress)
+        return 0
+
     opts = CleanupOptions(
         do_registry=not args.skip_registry,
         do_eventlogs=not args.skip_eventlogs,
