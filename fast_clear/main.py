@@ -71,9 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Не выполнять финальную самоочистку следов",
     )
     p.add_argument(
+        "--repair",
         "--repair-input",
+        dest="repair_input",
         action="store_true",
-        help="Восстановить USB-клавиатуру/мышь (перескан PnP, без очистки)",
+        help="Восстановить USB (клавиатура/мышь/флешки), без очистки",
     )
     p.add_argument(
         "-q",
@@ -86,11 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def print_plan() -> None:
     print(f"fast_clear {__version__} — план (dry-run)\n")
-    print("1. Реестр: USBSTOR/WPD/Modem/UMB + выборочно Enum\\USB")
-    print("   (клавиатуры, мыши, HID и USB-хабы НЕ удаляются)")
-    print("2. Журналы: PnP/WPD/MTP/WWAN + System/Security/Eventlog")
-    print("3. Файлы: setupapi, Prefetch утилит, PS history")
-    print("4. Самоочистка следов очистки")
+    print("1. Устройства: pnputil /remove-device для phantom-накопителей/")
+    print("   телефонов/часов/модемов (клав., мыши, HID, USB-хабы НЕ трогаются)")
+    print("2. Реестр: MountedDevices, Portable Devices, EMDMgmt, DeviceClasses,")
+    print("   DeviceContainers, Class Modem/Ports, кэши ПО, MountPoints2, BAM")
+    print("3. Файлы: setupapi.* (+ротация), Amcache, Prefetch утилит, PS history")
+    print("4. Журналы: стирание через остановку службы EventLog (без Event 104)")
     print("\nТребуются права администратора. Изменения не выполняются (--dry-run).")
 
 
@@ -123,9 +126,9 @@ def run_cli(args: argparse.Namespace) -> int:
     print(f"fast_clear {__version__}")
 
     if args.repair_input:
-        from fast_clear.repair import repair_usb_input
+        from fast_clear.repair import repair_usb
 
-        repair_usb_input(progress=progress)
+        repair_usb(progress=progress)
         return 0
 
     opts = CleanupOptions(

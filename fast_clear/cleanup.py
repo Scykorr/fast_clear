@@ -6,10 +6,11 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from fast_clear.admin import enable_cleanup_privileges, is_admin
-from fast_clear.eventlog_clean import EventLogResult, clear_event_logs
+from fast_clear.device_clean import DeviceCleanResult, clean_device_history
+from fast_clear.eventlog_clean import EventLogResult, wipe_logs_via_service
 from fast_clear.file_clean import FileCleanResult, clear_setupapi_logs
 from fast_clear.registry_clean import CleanResult, clean_registry
-from fast_clear.self_clean import final_quiet_pass, wipe_cleanup_evidence
+from fast_clear.self_clean import final_log_wipe, wipe_file_evidence
 
 ProgressCb = Callable[[str], None]
 
@@ -25,6 +26,7 @@ class CleanupOptions:
 @dataclass
 class CleanupSummary:
     privileges: list[str] = field(default_factory=list)
+    devices: DeviceCleanResult | None = None
     registry: CleanResult | None = None
     eventlogs: EventLogResult | None = None
     files: FileCleanResult | None = None
@@ -57,24 +59,29 @@ def run_cleanup(
         )
     )
 
+    # 1) Устройства и реестр (генерируют PnP-события — их сотрём в конце)
     if opts.do_registry:
+        log("=== Устройства (pnputil) ===")
+        summary.devices = clean_device_history(progress=log)
         log("=== Реестр ===")
         summary.registry = clean_registry(progress=log)
 
-    if opts.do_eventlogs:
-        log("=== Журналы событий ===")
-        summary.eventlogs = clear_event_logs(progress=log)
-
+    # 2) Файлы SetupAPI / Amcache
     if opts.do_files:
-        log("=== Файлы SetupAPI ===")
+        log("=== Файлы SetupAPI / Amcache ===")
         summary.files = clear_setupapi_logs(progress=log)
 
+    # 3) Самоочистка не-журнальных следов (Prefetch, история, BAM)
     if opts.do_self_clean:
-        log("=== Самоочистка следов ===")
-        summary.self_logs, summary.self_files, summary.self_bam = (
-            wipe_cleanup_evidence(progress=log)
-        )
-        final_quiet_pass(progress=log)
+        log("=== Самоочистка следов (файлы) ===")
+        summary.self_files, summary.self_bam = wipe_file_evidence(progress=log)
+
+    # 4) ПОСЛЕДНИМ — журналы событий через остановку службы (без Event 104).
+    #    Делается в самом конце, чтобы стереть и события от шагов выше.
+    if opts.do_eventlogs or opts.do_self_clean:
+        log("=== Журналы событий (стирание без следа очистки) ===")
+        summary.eventlogs = wipe_logs_via_service(progress=log)
+        summary.self_logs = summary.eventlogs
 
     log("Готово.")
     return summary
@@ -86,6 +93,14 @@ def format_summary(summary: CleanupSummary) -> str:
         return f"Ошибка: {summary.error}"
 
     lines: list[str] = ["--- Итог ---"]
+    if summary.devices is not None:
+        d = summary.devices
+        lines.append(
+            f"Устройства (phantom): удалено={len(d.removed)}, "
+            f"пропущено={len(d.skipped)}, ошибок={len(d.errors)}"
+        )
+        for err in d.errors[:8]:
+            lines.append(f"  ! {err}")
     if summary.registry is not None:
         r = summary.registry
         lines.append(

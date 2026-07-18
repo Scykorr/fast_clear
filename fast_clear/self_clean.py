@@ -1,10 +1,14 @@
-"""Финальный проход: стирание следов самой очистки."""
+"""Финальный проход: стирание следов самой очистки (без записи Event 104)."""
 
 from __future__ import annotations
 
 from typing import Callable
 
-from fast_clear.eventlog_clean import EventLogResult, clear_audit_traces, clear_event_logs
+from fast_clear.eventlog_clean import (
+    AUDIT_CHANNELS,
+    EventLogResult,
+    wipe_logs_via_service,
+)
 from fast_clear.file_clean import (
     FileCleanResult,
     clear_prefetch,
@@ -14,16 +18,17 @@ from fast_clear.file_clean import (
 from fast_clear.registry_clean import CleanResult, clear_bam_traces
 
 
-def wipe_cleanup_evidence(
+def wipe_file_evidence(
     progress: Callable[[str], None] | None = None,
-) -> tuple[EventLogResult, FileCleanResult, CleanResult]:
+) -> tuple[FileCleanResult, CleanResult]:
     """
-    Удаляет артефакты, которые появляются *из-за* очистки:
-    - записи «журнал очищен» (повторный clear System/Security/Eventlog)
-    - Prefetch wevtutil/python/powershell
+    Удаляет НЕ-журнальные артефакты очистки:
+    - Prefetch wevtutil / python / powershell / утилит
     - историю PowerShell
-    - BAM-записи утилит
     - временные файлы
+    - BAM-записи утилит
+    Журналы событий чистятся отдельно (через остановку службы), чтобы не оставить
+    Event ID 104/1102 «журнал очищен».
     """
     log = progress or (lambda _m: None)
 
@@ -40,34 +45,14 @@ def wipe_cleanup_evidence(
 
     log("Самоочистка: BAM")
     bam = clear_bam_traces()
-
-    # Два прохода: первый снимает 104/1102 от USB-журналов,
-    # второй — от очистки самих audit-каналов.
-    log("Самоочистка: журналы аудита (проход 1)")
-    logs1 = clear_audit_traces(progress=progress)
-    log("Самоочистка: журналы аудита (проход 2)")
-    logs2 = clear_audit_traces(progress=progress)
-    logs1.cleared.extend(logs2.cleared)
-    logs1.failed.extend(logs2.failed)
-    logs1.missing.extend(logs2.missing)
-
-    # Prefetch wevtutil мог появиться снова после cl
-    log("Самоочистка: Prefetch (повтор)")
-    pf = clear_prefetch(progress=progress)
-    files.deleted.extend(pf.deleted)
-    files.errors.extend(pf.errors)
-
-    return logs1, files, bam
+    return files, bam
 
 
-def final_quiet_pass(progress: Callable[[str], None] | None = None) -> None:
-    """Тихий финальный clear только audit-каналов без лишнего шума в выводе."""
-    clear_event_logs(
-        (
-            "System",
-            "Security",
-            "Microsoft-Windows-Eventlog/Operational",
-        ),
-        progress=progress,
-    )
-    clear_prefetch(progress=progress)
+def final_log_wipe(
+    progress: Callable[[str], None] | None = None,
+) -> EventLogResult:
+    """
+    Финальное стирание журналов аудита через остановку службы EventLog.
+    Не оставляет Event ID 104/1102 (в отличие от wevtutil cl).
+    """
+    return wipe_logs_via_service(AUDIT_CHANNELS, progress=progress)

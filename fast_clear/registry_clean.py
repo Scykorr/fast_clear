@@ -516,18 +516,17 @@ def _filter_ports_and_modem_class(result: CleanResult) -> None:
 def clean_registry(
     progress: Callable[[str], None] | None = None,
 ) -> CleanResult:
-    """Очистка следов флешек/модемов/телефонов/часов без повреждения HID."""
+    """
+    Очистка РЕЗИДУАЛЬНЫХ следов флешек/модемов/телефонов/часов.
+
+    ВАЖНО: сами устройства (ветки Enum\\USB, Enum\\USBSTOR, WPDBUSENUM) удаляются
+    НЕ здесь, а через pnputil (device_clean) — это безопасно для PnP и не ломает
+    подключение новых устройств. Здесь чистятся только сопутствующие артефакты:
+    MountedDevices, Portable Devices, EMDMgmt, DeviceClasses, DeviceContainers,
+    Class Modem/Ports, кэши ПО, MountPoints2, BAM.
+    """
     log = progress or (lambda _m: None)
     result = CleanResult()
-
-    for path in ENUM_FULL_WIPE:
-        log(f"Реестр: очистка {path}")
-        _delete_subkeys(winreg.HKEY_LOCAL_MACHINE, path, result)
-
-    _clear_enum_usb_selective(result, log)
-
-    log("Реестр: фильтрация Enum\\SCSI")
-    _filter_scsi_usbstor(result)
 
     for path in EXTRA_KEYS_HKLM:
         log(f"Реестр: очистка {path}")

@@ -131,7 +131,7 @@ class FastClearApp(tk.Tk):
         self.btn_start.pack(side=tk.LEFT, padx=(0, 8))
 
         self.btn_repair = ttk.Button(
-            btns, text="Починить клавиатуру/мышь", command=self._start_repair
+            btns, text="Починить USB (мышь/клав./флешки)", command=self._start_repair
         )
         self.btn_repair.pack(side=tk.LEFT, padx=(0, 8))
 
@@ -309,9 +309,9 @@ class FastClearApp(tk.Tk):
         def worker() -> None:
             ok = True
             try:
-                from fast_clear.repair import repair_usb_input
+                from fast_clear.repair import repair_usb
 
-                repair_usb_input(progress=lambda m: self._log_queue.put(m))
+                repair_usb(progress=lambda m: self._log_queue.put(m))
             except Exception as exc:  # noqa: BLE001
                 self._log_queue.put(f"Исключение: {exc}")
                 ok = False
