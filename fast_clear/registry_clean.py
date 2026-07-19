@@ -227,7 +227,7 @@ def _device_blob(hive: int, path: str, *extra: str) -> str:
 
 
 def _vid_from_text(text: str) -> str | None:
-    m = re.search(r"VID[_\s]?([0-9A-Fa-f]{4})", text)
+    m = re.search(r"VID[_\s]?([0-9A-Fa-f]{4})", text, re.IGNORECASE)
     return m.group(1).upper() if m else None
 
 
@@ -390,16 +390,109 @@ def _clear_mounted_devices(result: CleanResult) -> None:
 
 
 def _clear_device_classes(result: CleanResult) -> None:
+    """
+    DeviceClasses хранит интерфейсы устройств под МНОЖЕСТВОМ GUID (не только
+    disk/volume/WPD). Телефоны/часы/флешки регистрируются под MTP/WIA/приватными
+    GUID. Поэтому идём по ВСЕМ GUID и удаляем интерфейсы целевых устройств.
+    """
     base = r"SYSTEM\CurrentControlSet\Control\DeviceClasses"
-    for guid in DEVICE_CLASS_GUIDS:
+    for guid in list(_enum_subkeys(winreg.HKEY_LOCAL_MACHINE, base)):
         root = f"{base}\\{guid}"
         for sub in list(_enum_subkeys(winreg.HKEY_LOCAL_MACHINE, root)):
             full = f"{root}\\{sub}"
-            if _is_protected(sub, sub):
+            di = _query_str(winreg.HKEY_LOCAL_MACHINE, full, "DeviceInstance")
+            blob = f"{sub} {di}"
+            if _is_protected(blob, sub):
                 continue
-            if _is_target_portable(sub, sub):
+            if _is_target_portable(blob, sub):
                 if not _force_hklm(full, result):
                     _delete_tree(winreg.HKEY_LOCAL_MACHINE, full, result)
+
+
+def _clear_value_refs(hive: int, path: str, result: CleanResult) -> None:
+    """
+    Рекурсивно удаляет ЗНАЧЕНИЯ, чьё ИМЯ — это InstanceId целевого устройства
+    (напр. USB\\VID_2717...\\serial). Используется там, где история хранится
+    в именах значений: DeviceMigration\\Locations, DevicePanels\\...\\Devices.
+    """
+    for name, _data, _t in list(_enum_values(hive, path)):
+        if not name:
+            continue
+        if _is_protected(name, name):
+            continue
+        if _is_target_portable(name, name):
+            try:
+                with _open_key(hive, path, winreg.KEY_SET_VALUE) as key:
+                    winreg.DeleteValue(key, name)
+                result.deleted_values.append(f"{path}\\{name}")
+            except OSError as exc:
+                result.errors.append(f"{path}\\{name}: {exc}")
+    for sub in list(_enum_subkeys(hive, path)):
+        _clear_value_refs(hive, f"{path}\\{sub}", result)
+
+
+def _clear_device_migration(result: CleanResult) -> None:
+    """
+    Control\\DeviceMigration хранит историю подключённых устройств (HardwareIds,
+    серийники, symbolic name) даже после удаления. Из-за неё PnP заново пишет
+    события в журналы при загрузке. Чистим целевые записи.
+    """
+    base = r"SYSTEM\CurrentControlSet\Control\DeviceMigration"
+
+    # Classes и Locations: история хранится в ИМЕНАХ значений — чистим рекурсивно.
+    _clear_value_refs(winreg.HKEY_LOCAL_MACHINE, f"{base}\\Classes", result)
+    _clear_value_refs(winreg.HKEY_LOCAL_MACHINE, f"{base}\\Locations", result)
+
+    devices = f"{base}\\Devices"
+    for bus in list(_enum_subkeys(winreg.HKEY_LOCAL_MACHINE, devices)):
+        bp = f"{devices}\\{bus}"
+        for node in list(_enum_subkeys(winreg.HKEY_LOCAL_MACHINE, bp)):
+            npath = f"{bp}\\{node}"
+            blob = _device_blob(winreg.HKEY_LOCAL_MACHINE, npath, bus, node)
+            for child in _enum_subkeys(winreg.HKEY_LOCAL_MACHINE, npath):
+                blob += " " + _device_blob(
+                    winreg.HKEY_LOCAL_MACHINE, f"{npath}\\{child}", child
+                )
+            if _is_protected(blob, node):
+                continue
+            if _is_target_portable(blob, node):
+                if not _force_hklm(npath, result):
+                    _delete_tree(winreg.HKEY_LOCAL_MACHINE, npath, result)
+
+
+def _clear_class_instances(result: CleanResult) -> None:
+    """
+    Control\\Class\\{GUID}\\NNNN — привязки драйверов. Для удалённых телефонов/
+    накопителей остаются осиротевшие записи (WpdDevicePnPID, DeviceInstanceID).
+    Трогаем ТОЛЬКО USB-цели; PCI-адаптеры (реальные сетевые/Wi-Fi) не затрагиваем.
+    """
+    base = r"SYSTEM\CurrentControlSet\Control\Class"
+    for guid in list(_enum_subkeys(winreg.HKEY_LOCAL_MACHINE, base)):
+        gp = f"{base}\\{guid}"
+        for sub in list(_enum_subkeys(winreg.HKEY_LOCAL_MACHINE, gp)):
+            if not re.fullmatch(r"\d{4}", sub):
+                continue
+            ipath = f"{gp}\\{sub}"
+            # ТОЛЬКО собственные идентификаторы экземпляра (не общий blob класса —
+            # иначе зацепим все WPD-инстансы, включая присутствующие устройства).
+            # ВНИМАНИЕ: MatchingDeviceId — общий шаблон INF (напр. WpdBusEnumRoot),
+            # по нему нельзя удалять (снесёт WPD для всех устройств). Берём только
+            # конкретную привязку: DeviceInstanceID и WpdDevicePnPID.
+            di = _query_str(winreg.HKEY_LOCAL_MACHINE, ipath, "DeviceInstanceID")
+            wpd = _query_str(
+                winreg.HKEY_LOCAL_MACHINE, f"{ipath}\\DeviceData", "WpdDevicePnPID"
+            )
+            ident = f"{di} {wpd}".strip()
+            if not ident:
+                continue
+            # только конкретная USB-цель по собственному ID
+            if not re.search(r"USB[\\#]VID_|USBSTOR|WPDBUSENUM", ident, re.I):
+                continue
+            if _is_protected(ident, di):
+                continue
+            if _is_target_portable(ident, di):
+                if not _force_hklm(ipath, result):
+                    _delete_tree(winreg.HKEY_LOCAL_MACHINE, ipath, result)
 
 
 def _clear_device_containers(result: CleanResult) -> None:
@@ -584,8 +677,21 @@ def clean_registry(
     log("Реестр: MountedDevices (USBSTOR/WPD)")
     _clear_mounted_devices(result)
 
-    log("Реестр: DeviceClasses (портативные, без HID)")
+    log("Реестр: DeviceClasses (все GUID, портативные, без HID)")
     _clear_device_classes(result)
+
+    log("Реестр: DeviceMigration (история устройств)")
+    _clear_device_migration(result)
+
+    log("Реестр: Class\\{GUID}\\NNNN (осиротевшие USB-цели)")
+    _clear_class_instances(result)
+
+    log("Реестр: DevicePanels (ссылки на устройства)")
+    _clear_value_refs(
+        winreg.HKEY_LOCAL_MACHINE,
+        r"SYSTEM\CurrentControlSet\Control\DevicePanels",
+        result,
+    )
 
     log("Реестр: DeviceContainers (портативные, без input)")
     _clear_device_containers(result)
