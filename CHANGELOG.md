@@ -5,6 +5,52 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии следуют [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.3.2] — 2026-07-19
+
+### Исправлено (безопасность данных)
+
+- **Внутренние диски больше не могут пострадать.** Убран слишком широкий шаблон
+  `DISK&VEN` в `TARGET_RE`, который теоретически совпадал с внутренним
+  `SCSI\Disk&Ven_NVMe…`. USB-флешки и внешние USB-HDD по-прежнему ловятся по
+  признаку шины `USBSTOR`.
+- **`MountedDevices`: буквы C:/D: защищены.** Удаление теперь только по маркеру
+  съёмной шины `USBSTOR`/`WPDBUSENUM`; убраны совпадения по имени вендора
+  (в т.ч. `KINGSTON` — это вендор системного диска).
+
+### Добавлено
+
+- Кнопка «Починить USB и сеть»: помимо USB перезапускает `Dhcp/Dnscache/WlanSvc/
+  NlaSvc`, делает `ipconfig /flushdns` и `/renew` и проверяет доступ в Интернет.
+  Сохранённые Wi-Fi профили (пароли) не удаляются.
+
+### Проверено
+
+- После очистки: Интернет доступен (ping), 11 сохранённых Wi-Fi сетей на месте,
+  буквы C:/D: не тронуты, новые флешки/HDD монтируются (pnputil-подход).
+
+## [1.3.1] — 2026-07-19
+
+### Исправлено (критично — HistoryChecker)
+
+- **Вкладки «Сети WiFi» и «Факты подключения к Интернет».** HistoryChecker
+  читает `Microsoft-Windows-WLAN-AutoConfig/Operational` (SSID/MAC/время) и
+  `Microsoft-Windows-UniversalTelemetryClient/Operational` (события 27/61 —
+  «Интернет есть/отсутствует»). Эти каналы раньше не чистились. Добавлены.
+- **Вкладка «USB-устройства» всё ещё показывала флешки.** Причина — неверный
+  GUID WPD в `DeviceClasses` (`{6ac27878-a6fa-…}` не чистился) плюс баг
+  `MountedDevices`: значения UTF-16LE не ловились ASCII-поиском `USBSTOR`
+  (буква `F:` оставалась с Transcend). Оба бага исправлены.
+- Добавлены каналы, которые явно читает HistoryChecker: `Kernel-PnPConfig`,
+  `Partition/Diagnostic`, `Storsvc/Diagnostic`, `DriverFrameworks-UserMode`,
+  `DeviceSetupManager/Admin`, `NCSI`, `NetworkProfile`.
+
+### Добавлено
+
+- Модуль `network_clean.py` — очистка `NetworkList\Profiles/Signatures/Nla`
+  (имена сетей и даты подключений в реестре).
+- Опции `--skip-network` / `--wlan-profiles` и чекбоксы в GUI.
+- VID Seagate / JMicron / ASMedia / SanDisk / Kingston / Transcend в цели.
+
 ## [1.3.0] — 2026-07-18
 
 ### Исправлено (критично)

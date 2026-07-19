@@ -90,6 +90,10 @@ TARGET_VIDS = {
     "090C",  # Silicon Motion (flash)
     "1F75",  # Innostor (flash)
     "13FE",  # Kingston/Phison flash
+    "0BC2",  # Seagate
+    "152D",  # JMicron
+    "174C",  # ASMedia
+    "1058",  # Western Digital
 }
 
 

@@ -98,20 +98,32 @@ class FastClearApp(tk.Tk):
         self.var_registry = tk.BooleanVar(value=True)
         self.var_eventlogs = tk.BooleanVar(value=True)
         self.var_files = tk.BooleanVar(value=True)
+        self.var_network = tk.BooleanVar(value=True)
+        self.var_wlan = tk.BooleanVar(value=False)
         self.var_self = tk.BooleanVar(value=True)
 
         ttk.Checkbutton(
             opts,
-            text="Реестр (флешки, модемы, телефоны, часы/Garmin, WPD/MTP…)",
+            text="Устройства и реестр (флешки, модемы, телефоны, часы, WPD/MTP…)",
             variable=self.var_registry,
         ).pack(anchor=tk.W)
         ttk.Checkbutton(
             opts,
-            text="Журналы событий (PnP/USB/WPD/WWAN + System/Security)",
+            text="Журналы событий (PnP/USB/WPD + Wi-Fi + Интернет + System/Security)",
             variable=self.var_eventlogs,
         ).pack(anchor=tk.W)
         ttk.Checkbutton(
-            opts, text="Файлы SetupAPI", variable=self.var_files
+            opts, text="Файлы SetupAPI / Amcache", variable=self.var_files
+        ).pack(anchor=tk.W)
+        ttk.Checkbutton(
+            opts,
+            text="История сетей Wi-Fi и Интернета (NetworkList)",
+            variable=self.var_network,
+        ).pack(anchor=tk.W)
+        ttk.Checkbutton(
+            opts,
+            text="   └ также удалить сохранённые Wi-Fi профили (сбросит пароли!)",
+            variable=self.var_wlan,
         ).pack(anchor=tk.W)
         ttk.Checkbutton(
             opts, text="Самоочистка следов очистки", variable=self.var_self
@@ -131,7 +143,7 @@ class FastClearApp(tk.Tk):
         self.btn_start.pack(side=tk.LEFT, padx=(0, 8))
 
         self.btn_repair = ttk.Button(
-            btns, text="Починить USB (мышь/клав./флешки)", command=self._start_repair
+            btns, text="Починить USB и сеть", command=self._start_repair
         )
         self.btn_repair.pack(side=tk.LEFT, padx=(0, 8))
 
@@ -246,13 +258,16 @@ class FastClearApp(tk.Tk):
             do_registry=self.var_registry.get(),
             do_eventlogs=self.var_eventlogs.get(),
             do_files=self.var_files.get(),
+            do_network=self.var_network.get(),
             do_self_clean=self.var_self.get(),
+            remove_wlan_profiles=self.var_wlan.get(),
         )
         if not any(
             (
                 opts.do_registry,
                 opts.do_eventlogs,
                 opts.do_files,
+                opts.do_network,
                 opts.do_self_clean,
             )
         ):

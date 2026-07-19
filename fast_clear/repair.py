@@ -93,6 +93,18 @@ foreach ($svc in 'USBSTOR') {
 & pnputil.exe /scan-devices 2>$null | Out-Null
 Start-Sleep -Seconds 2
 
+# 8) Сеть: перезапуск служб и обновление адреса (Wi-Fi/Интернет должны подняться).
+#    Профили Wi-Fi (пароли) при этом сохраняются.
+foreach ($nsvc in 'Dhcp','Dnscache','WlanSvc','NlaSvc') {
+  Restart-Service -Name $nsvc -Force -ErrorAction SilentlyContinue
+}
+& ipconfig /flushdns 2>$null | Out-Null
+& ipconfig /renew 2>$null | Out-Null
+Start-Sleep -Seconds 2
+$netOk = $false
+try { $netOk = Test-Connection 1.1.1.1 -Count 1 -Quiet -ErrorAction SilentlyContinue } catch {}
+Write-Output "INTERNET_OK=$netOk"
+
 $okK = @(Get-PnpDevice -Class Keyboard | Where-Object Status -eq 'OK').Count
 $okM = @(Get-PnpDevice -Class Mouse | Where-Object Status -eq 'OK').Count
 $badInput = @(Get-PnpDevice -Class Keyboard,Mouse,HIDClass | Where-Object { $_.Status -ne 'OK' -and $_.Status -ne 'Unknown' }).Count

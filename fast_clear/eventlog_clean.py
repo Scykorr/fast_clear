@@ -12,16 +12,18 @@ from typing import Callable
 WINEVT_LOGS = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "winevt" / "Logs"
 
 # Каналы: PnP / USB / накопители / MTP / WPD / модемы / WWAN
+# Помечены (HC) те, что читает программа-детектор HistoryChecker.
 USB_RELATED_CHANNELS: tuple[str, ...] = (
-    "Microsoft-Windows-DriverFrameworks-UserMode/Operational",
-    "Microsoft-Windows-Kernel-PnP/Configuration",
+    "Microsoft-Windows-DriverFrameworks-UserMode/Operational",  # HC
+    "Microsoft-Windows-Kernel-PnP/Configuration",  # HC
+    "Microsoft-Windows-Kernel-PnPConfig/Configuration",  # HC (вариант)
     "Microsoft-Windows-Kernel-PnP/Device Configuration",
     "Microsoft-Windows-Kernel-PnP/Device Management",
-    "Microsoft-Windows-Partition/Diagnostic",
+    "Microsoft-Windows-Partition/Diagnostic",  # HC (Event 1006: VID/PID/serial/model)
     "Microsoft-Windows-Storage-ClassPnP/Operational",
-    "Microsoft-Windows-DeviceSetupManager/Admin",
+    "Microsoft-Windows-DeviceSetupManager/Admin",  # HC
     "Microsoft-Windows-DeviceSetupManager/Operational",
-    "Microsoft-Windows-Storsvc/Diagnostic",
+    "Microsoft-Windows-Storsvc/Diagnostic",  # HC
     "Microsoft-Windows-StorageManagement/Operational",
     "Microsoft-Windows-Volume/Diagnostic",
     "Microsoft-Windows-Ntfs/Operational",
@@ -40,6 +42,22 @@ USB_RELATED_CHANNELS: tuple[str, ...] = (
     "Microsoft-Windows-ModemDeviceEvents/Operational",
 )
 
+# Каналы истории сети: Wi-Fi и факты подключения к Интернету.
+# WLAN-AutoConfig/Operational -> вкладка «Сети WiFi» (SSID, MAC, время);
+# UniversalTelemetryClient/Operational -> вкладка «Факты подключения к Интернет».
+NETWORK_CHANNELS: tuple[str, ...] = (
+    "Microsoft-Windows-WLAN-AutoConfig/Operational",  # HC (Wi-Fi)
+    "Microsoft-Windows-WLAN-AutoConfig/Diagnostic",
+    "Microsoft-Windows-UniversalTelemetryClient/Operational",  # HC (Интернет)
+    "Microsoft-Windows-NCSI/Operational",
+    "Microsoft-Windows-NetworkProfile/Operational",
+    "Microsoft-Windows-Dhcp-Client/Admin",
+    "Microsoft-Windows-Dhcpv6-Client/Admin",
+    "Microsoft-Windows-Wcmsvc/Operational",
+    "Microsoft-Windows-WFP/Operational",
+    "Microsoft-Windows-NlaSvc/Operational",
+)
+
 # Журналы, в которых остаётся Event ID 104/1102 («журнал очищен»)
 AUDIT_CHANNELS: tuple[str, ...] = (
     "System",
@@ -50,9 +68,9 @@ AUDIT_CHANNELS: tuple[str, ...] = (
     "Setup",
 )
 
-# Полный список для финального прохода (USB + следы очистки)
+# Полный список для финального прохода (USB + сеть + следы очистки)
 ALL_CLEAR_CHANNELS: tuple[str, ...] = tuple(
-    dict.fromkeys((*USB_RELATED_CHANNELS, *AUDIT_CHANNELS))
+    dict.fromkeys((*USB_RELATED_CHANNELS, *NETWORK_CHANNELS, *AUDIT_CHANNELS))
 )
 
 

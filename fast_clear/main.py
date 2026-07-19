@@ -66,6 +66,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Не очищать SetupAPI / Prefetch / историю",
     )
     p.add_argument(
+        "--skip-network",
+        action="store_true",
+        help="Не очищать историю сетей Wi-Fi / Интернета",
+    )
+    p.add_argument(
+        "--wlan-profiles",
+        action="store_true",
+        help="Также удалить сохранённые Wi-Fi профили (сбросит пароли сетей!)",
+    )
+    p.add_argument(
         "--skip-self-clean",
         action="store_true",
         help="Не выполнять финальную самоочистку следов",
@@ -93,7 +103,9 @@ def print_plan() -> None:
     print("2. Реестр: MountedDevices, Portable Devices, EMDMgmt, DeviceClasses,")
     print("   DeviceContainers, Class Modem/Ports, кэши ПО, MountPoints2, BAM")
     print("3. Файлы: setupapi.* (+ротация), Amcache, Prefetch утилит, PS history")
-    print("4. Журналы: стирание через остановку службы EventLog (без Event 104)")
+    print("4. Сеть: NetworkList (Wi-Fi/Интернет) в реестре")
+    print("5. Журналы: стирание через остановку службы EventLog (без Event 104)")
+    print("   вкл. WLAN-AutoConfig и UniversalTelemetryClient (Wi-Fi/Интернет)")
     print("\nТребуются права администратора. Изменения не выполняются (--dry-run).")
 
 
@@ -109,6 +121,8 @@ def should_use_gui(args: argparse.Namespace) -> bool:
             args.skip_registry,
             args.skip_eventlogs,
             args.skip_files,
+            args.skip_network,
+            args.wlan_profiles,
             args.skip_self_clean,
             args.quiet,
         )
@@ -135,7 +149,9 @@ def run_cli(args: argparse.Namespace) -> int:
         do_registry=not args.skip_registry,
         do_eventlogs=not args.skip_eventlogs,
         do_files=not args.skip_files,
+        do_network=not args.skip_network,
         do_self_clean=not args.skip_self_clean,
+        remove_wlan_profiles=args.wlan_profiles,
     )
     summary = run_cleanup(options=opts, progress=progress)
     if not args.quiet:

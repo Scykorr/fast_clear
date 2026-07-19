@@ -20,7 +20,7 @@ DEVICE_CLASS_GUIDS = (
     "{4d36e978-e325-11ce-bfc1-08002be10318}",  # Ports (COM) — только USB-модемы по фильтру
     "{4d36e972-e325-11ce-bfc1-08002be10318}",  # Net — USB tethering / WWAN по фильтру
     "{eec5ad98-8080-425f-922a-dabf3de3f69a}",  # WPD
-    "{6ac27878-a6bc-11d0-96b8-00a0c91ede8a}",  # WPD (alt)
+    "{6ac27878-a6fa-4155-ba85-f98f491d4f33}",  # WPD (основной GUID, читает HistoryChecker)
     "{6bdd1fc6-810f-11d0-bec7-08002be2092f}",  # StillImage / WIA
     "{50dd5230-ba8a-11d1-bf5d-0000f805f530}",  # SmartCardReader / CCID
 )
@@ -102,13 +102,15 @@ TARGET_RE = re.compile(
     r"ONEPLUS|PIXEL|NOKIA|MOTOROLA|OPPO|VIVO|REALME|"
     r"MOBILE\s*PHONE|SMARTPHONE|HANDHELD|"
     r"TETHER|HOTSPOT|MASS\s*STORAGE|FLASH\s*DRIVE|THUMB\s*DRIVE|"
-    r"REMOVABLE|DISK&VEN|USBSTOR#|"
+    # ВНИМАНИЕ: без голого DISK&VEN — иначе матчится внутренний SCSI\Disk&Ven_NVMe.
+    # USB-флешки и внешние HDD всё равно ловятся по USBSTOR (их шина — USBSTOR).
+    r"REMOVABLE|USBSTOR#|"
     r"USBSER|SERIAL\s*MODEM|LTE|3G|4G|5G\s*MODEM"
     r")",
     re.IGNORECASE,
 )
 
-# VID известных телефонов / часов / модемов (дополнительный сигнал)
+# VID известных телефонов / часов / модемов / флешек (дополнительный сигнал)
 TARGET_VIDS = {
     "05AC",  # Apple
     "091E",  # Garmin
@@ -121,11 +123,19 @@ TARGET_VIDS = {
     "2A70",  # OnePlus
     "0E8D",  # MediaTek phones
     "19D2",  # ZTE modem
-    "12D1",  # Huawei modem
     "1199",  # Sierra Wireless
-    "12D1",
     "1BBB",  # T&A Mobile
-    "04E8",
+    "0781",  # SanDisk
+    "0951",  # Kingston
+    "8564",  # Transcend
+    "090C",  # Silicon Motion (flash)
+    "13FE",  # Kingston/Phison flash
+    "058F",  # Alcor Micro (flash/readers)
+    "1F75",  # Innostor (flash)
+    "0BC2",  # Seagate
+    "152D",  # JMicron (внешние HDD/SSD)
+    "174C",  # ASMedia (внешние HDD/SSD)
+    "1058",  # Western Digital
 }
 
 
@@ -351,18 +361,23 @@ def _clear_mounted_devices(result: CleanResult) -> None:
     for name, data, _rtype in _enum_values(winreg.HKEY_LOCAL_MACHINE, path):
         text = name.upper()
         blob = data if isinstance(data, bytes) else b""
+        # Значения MountedDevices — UTF-16LE строки; ASCII-поиск «USBSTOR» их не находит.
+        try:
+            decoded = blob.decode("utf-16-le", errors="ignore").upper()
+        except Exception:
+            decoded = ""
+        # ВАЖНО: удаляем ТОЛЬКО по признаку съёмной шины USBSTOR/WPDBUSENUM.
+        # Внутренние диски (C:/D:) хранят бинарную GPT/MBR-сигнатуру без этих строк,
+        # поэтому их буквы не трогаются. Внешние USB-HDD идут через USBSTOR — ловятся.
         looks = (
             "USBSTOR" in text
-            or "WPD" in text
             or "WPDBUSENUM" in text
+            or "USBSTOR" in decoded
+            or "WPDBUSENUM" in decoded
             or b"USBSTOR" in blob
             or b"_??_USBSTOR" in blob
             or b"WPDBUSENUM" in blob
-            or b"WPD#" in blob
-            or b"GARMIN" in blob
-            or b"MTP" in blob
         )
-        # Не удаляем по голому USB# — могут быть тома, не связанные с чисткой
         if looks:
             try:
                 with _open_key(

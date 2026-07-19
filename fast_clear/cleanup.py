@@ -9,6 +9,7 @@ from fast_clear.admin import enable_cleanup_privileges, is_admin
 from fast_clear.device_clean import DeviceCleanResult, clean_device_history
 from fast_clear.eventlog_clean import EventLogResult, wipe_logs_via_service
 from fast_clear.file_clean import FileCleanResult, clear_setupapi_logs
+from fast_clear.network_clean import NetworkCleanResult, clean_network_history
 from fast_clear.registry_clean import CleanResult, clean_registry
 from fast_clear.self_clean import final_log_wipe, wipe_file_evidence
 
@@ -20,7 +21,9 @@ class CleanupOptions:
     do_registry: bool = True
     do_eventlogs: bool = True
     do_files: bool = True
+    do_network: bool = True
     do_self_clean: bool = True
+    remove_wlan_profiles: bool = False
 
 
 @dataclass
@@ -30,6 +33,7 @@ class CleanupSummary:
     registry: CleanResult | None = None
     eventlogs: EventLogResult | None = None
     files: FileCleanResult | None = None
+    network: NetworkCleanResult | None = None
     self_logs: EventLogResult | None = None
     self_files: FileCleanResult | None = None
     self_bam: CleanResult | None = None
@@ -71,6 +75,13 @@ def run_cleanup(
         log("=== Файлы SetupAPI / Amcache ===")
         summary.files = clear_setupapi_logs(progress=log)
 
+    # 2.5) История сетей (Wi-Fi / Интернет) в реестре NetworkList
+    if opts.do_network:
+        log("=== История сетей (Wi-Fi / Интернет) ===")
+        summary.network = clean_network_history(
+            progress=log, remove_wlan_profiles=opts.remove_wlan_profiles
+        )
+
     # 3) Самоочистка не-журнальных следов (Prefetch, история, BAM)
     if opts.do_self_clean:
         log("=== Самоочистка следов (файлы) ===")
@@ -78,7 +89,7 @@ def run_cleanup(
 
     # 4) ПОСЛЕДНИМ — журналы событий через остановку службы (без Event 104).
     #    Делается в самом конце, чтобы стереть и события от шагов выше.
-    if opts.do_eventlogs or opts.do_self_clean:
+    if opts.do_eventlogs or opts.do_self_clean or opts.do_network:
         log("=== Журналы событий (стирание без следа очистки) ===")
         summary.eventlogs = wipe_logs_via_service(progress=log)
         summary.self_logs = summary.eventlogs
@@ -125,8 +136,18 @@ def format_summary(summary: CleanupSummary) -> str:
     if summary.files is not None:
         f = summary.files
         lines.append(
-            f"SetupAPI: обнулено={len(f.truncated)}, ошибок={len(f.errors)}"
+            f"SetupAPI/Amcache: обнулено={len(f.truncated)}, "
+            f"удалено={len(f.deleted)}, ошибок={len(f.errors)}"
         )
+
+    if summary.network is not None:
+        n = summary.network
+        lines.append(
+            f"Сеть (Wi-Fi/Интернет): ключей={len(n.deleted_keys)}, "
+            f"профилей={len(n.deleted_profiles)}, ошибок={len(n.errors)}"
+        )
+        for err in n.errors[:6]:
+            lines.append(f"  ! {err}")
 
     if summary.self_logs is not None:
         lines.append(f"Самоочистка журналов: каналов={len(summary.self_logs.cleared)}")
